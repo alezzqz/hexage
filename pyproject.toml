@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hexage"
+version = "0.1.0"
+description = "Encrypted notes"
+license = "LGPL-3.0-or-later"
+license-files = ["LICENSE", "LICENSE.GPL-3.0"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+requires-python = ">=3.11"
+dependencies = ["argon2-cffi>=23.1", "cryptography>=44", "platformdirs>=4", "portalocker>=2.10", "keyring>=25", "requests>=2.32", "PyYAML>=6.0.2,<7"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.9"]
+build = ["pyinstaller>=6.16,<7"]
+
+[tool.setuptools.packages.find]
+include = ["hexage", "hexage.*"]
+
+[tool.setuptools.package-data]
+hexage = ["assets/hexage-*.png", "assets/icons8/*/*.png"]
+
+[project.gui-scripts]
+hexage = "hexage.ui:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff]
+extend-exclude = [".uv-cache", ".uv-clean", ".test-run", "pytest-cache-files-*"]

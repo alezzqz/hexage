@@ -1,0 +1,7 @@
+oauth:
+  google:
+    client_id: ""
+    # Заполните, если Google требует Client secret.
+    client_secret: ""
+  yandex:
+    client_id: ""
