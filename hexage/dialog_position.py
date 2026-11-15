@@ -18,7 +18,53 @@
 import tkinter as tk
 
 
-def show_centered(
+def show_modal(
+    dialog: tk.Toplevel, focus: tk.Widget, *, size: tuple[int, int] | None = None
+) -> bool:
+    parent = dialog.master
+    dialog.transient(parent)
+    previous_grab = dialog.grab_current()
+    previous_focus = parent.focus_lastfor()
+    _show_centered(dialog, parent, size=size)
+    try:
+        if not dialog.winfo_viewable():
+            dialog.wait_visibility()
+    except tk.TclError:
+        if dialog.winfo_exists():
+            raise
+        return False
+    dialog.grab_set()
+    dialog.bind(
+        "<Destroy>",
+        lambda event: _restore_input(event, dialog, previous_grab, previous_focus),
+        add="+",
+    )
+    focus.focus_set()
+    return True
+
+
+def _restore_input(
+    event: tk.Event,
+    dialog: tk.Toplevel,
+    previous_grab: tk.Misc | None,
+    previous_focus: tk.Misc | None,
+) -> None:
+    # Toplevel bindings also see descendant destruction. A newer dialog may
+    # already own the grab, so do not replace it when closing this one.
+    if event.widget is not dialog or dialog.grab_current() not in (None, dialog):
+        return
+    if previous_grab is not None and previous_grab.winfo_exists():
+        previous_grab.grab_set()
+    if previous_focus is not None and previous_focus.winfo_exists():
+        previous_focus.focus_set()
+
+
+def has_modal_child(window: tk.Tk | tk.Toplevel) -> bool:
+    # Tk can give the grab to widgets it creates internally, such as a dropdown.
+    return str(window.tk.call("grab", "current", window)) not in ("", str(window))
+
+
+def _show_centered(
     dialog: tk.Toplevel, anchor: tk.Misc, *, size: tuple[int, int] | None = None
 ) -> None:
     dialog.update_idletasks()

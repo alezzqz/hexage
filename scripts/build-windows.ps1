@@ -25,6 +25,7 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $AppIcon = Join-Path $ProjectRoot "hexage\assets\hexage.ico"
+$Manifest = Join-Path $PSScriptRoot "hexage.manifest"
 if (-not $Python) {
     $Python = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
 }
@@ -33,7 +34,7 @@ Push-Location -LiteralPath $ProjectRoot
 try {
     & $Python -m PyInstaller --noconfirm --onefile --windowed --noupx --name Hexage `
         --distpath dist/windows --workpath build/windows --specpath build/windows `
-        --icon $AppIcon --collect-data hexage scripts/hexage_entry.py
+        --icon $AppIcon --manifest $Manifest --collect-data hexage scripts/hexage_entry.py
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller exited with code $LASTEXITCODE."
     }

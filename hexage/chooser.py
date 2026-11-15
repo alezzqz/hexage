@@ -19,7 +19,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import TypeVar
 
-from .dialog_position import show_centered
+from .dialog_position import show_modal
 from .icon_button import pack_icon
 
 T = TypeVar("T")
@@ -30,13 +30,11 @@ def choose(
     title: str,
     entries: list[tuple[str, T]],
     *,
-    anchor: tk.Tk,
     multiple: bool = False,
 ) -> list[T]:
     dialog = tk.Toplevel(parent)
     dialog.withdraw()
     dialog.title(title)
-    dialog.transient(parent)
     result: list[T] = []
     options = tk.Listbox(
         dialog, exportselection=False, selectmode="extended" if multiple else "browse"
@@ -58,8 +56,6 @@ def choose(
     dialog.bind("<Return>", accept)
     if not multiple:
         options.bind("<Double-Button-1>", accept)
-    show_centered(dialog, anchor, size=(600, 300))
-    options.focus_set()
-    dialog.grab_set()
-    parent.wait_window(dialog)
+    if show_modal(dialog, options, size=(600, 300)):
+        parent.wait_window(dialog)
     return result

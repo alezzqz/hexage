@@ -21,7 +21,7 @@ from tkinter import ttk
 from typing import TYPE_CHECKING
 
 from .cloud import Cloud, Snapshot
-from .dialog_position import show_centered
+from .dialog_position import show_modal
 from .icon_button import IconButton
 
 if TYPE_CHECKING:
@@ -35,7 +35,6 @@ class CloudWindow(tk.Toplevel):
         self.app = app
         self.snapshots: list[Snapshot] = []
         self.title("Облачное хранилище")
-        self.transient(app.root)
         self.minsize(550, 310)
         body = ttk.Frame(self, padding=16)
         body.pack(fill="both", expand=True)
@@ -48,8 +47,9 @@ class CloudWindow(tk.Toplevel):
         self.clear_snapshots()
         self.protocol("WM_DELETE_WINDOW", app.close_cloud_window)
         self.bind("<Escape>", lambda _: app.close_cloud_window())
-        show_centered(self, app.root, size=(700, 400))
-        self.provider.focus_set()
+
+    def show(self) -> None:
+        show_modal(self, self.provider, size=(700, 400))
 
     def build_snapshot_list(self, body: ttk.Frame) -> None:
         ttk.Label(body, text="Снимки · дата сохранения в облаке (UTC)").pack(anchor="w")

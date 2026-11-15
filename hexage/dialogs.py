@@ -18,7 +18,7 @@
 import tkinter as tk
 from tkinter import ttk
 
-from .dialog_position import show_centered
+from .dialog_position import show_modal
 
 
 class Dialog(tk.Toplevel):
@@ -26,7 +26,6 @@ class Dialog(tk.Toplevel):
         super().__init__(parent)
         self.withdraw()
         self.title(title)
-        self.transient(parent)
         self.resizable(False, False)
         self.result: str | None = None
         self.body = ttk.Frame(self, padding=16)
@@ -41,17 +40,8 @@ class Dialog(tk.Toplevel):
         self.destroy()
 
     def wait_for_result(self, focus: tk.Widget) -> str | None:
-        show_centered(self, self.nametowidget("."))
-        try:
-            if not self.winfo_viewable():
-                self.wait_visibility()
-        except tk.TclError:
-            if self.winfo_exists():
-                raise
-            return self.result
-        focus.focus_set()
-        self.grab_set()
-        self.wait_window()
+        if show_modal(self, focus):
+            self.wait_window()
         return self.result
 
 

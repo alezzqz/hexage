@@ -25,8 +25,11 @@ from time import monotonic, perf_counter
 from unittest.mock import patch
 
 from hexage import ui
+from hexage.chooser import choose
 from hexage.codec import seal
+from hexage.config import OAuthConfig
 from hexage.dialogs import Dialog
+from hexage.icon_button import IconButton
 from hexage.model import Note
 from hexage.session import initialize, plan_restore, save, unlock
 from hexage.storage import Store
@@ -70,12 +73,18 @@ def smoke(path: Path) -> None:
     app.open_selected()
     editor = app.editor
     assert editor is not None
+    assert root.grab_current() is editor
     clipboard(editor)
     assert editor.dirty()
+    root.after(100, dismiss_modal, editor)
+    editor.close()
+    assert root.grab_current() is editor and editor.dirty()
     app.last_activity = monotonic() - 301
-    app.tick()
+    root.after(100, app.tick)
+    editor.close()
     assert app.session is None and app.editor is None
     assert not editor.winfo_exists()
+    assert root.grab_current() is None
     assert unlock(store, PASSWORD).opened.vault.notes == (note,)
     incoming = replace(session.opened, vault=session.opened.vault.advance((note,)))
     restored_store = Store(path / "restored.hexage")
@@ -84,9 +93,41 @@ def smoke(path: Path) -> None:
     print(
         f"Tk {root.tk.call('info', 'patchlevel')}: clipboard, lock, and restore passed"
     )
-    for callback in root.tk.call("after", "info"):
-        root.after_cancel(callback)
+    close_app(app)
+
+
+def close_app(app: App) -> None:
+    for callback in app.root.tk.call("after", "info"):
+        app.root.after_cancel(callback)
     app.close()
+
+
+def dismiss_modal(owner: tk.Tk | tk.Toplevel) -> None:
+    dialog = owner.grab_current()
+    assert isinstance(dialog, tk.Toplevel) and dialog.master is owner
+    dialog.destroy()
+
+
+def modal_smoke(path: Path) -> None:
+    root = tk.Tk()
+    app = App(root, Store(path / "modal.hexage"), OAuthConfig(google_client_id="test"))
+    root.update()
+    app.show_about()
+    assert root.grab_current() is not None
+    app.close()
+    assert root.winfo_exists()
+    dismiss_modal(root)
+    assert root.grab_current() is None
+    app.open_cloud_window()
+    window = app.cloud_window
+    assert window is not None and root.grab_current() is window
+    root.after(100, dismiss_modal, window)
+    assert choose(window, "Тест", [("Пункт", 1)]) == []
+    assert root.grab_current() is window
+    app.close_cloud_window()
+    assert root.grab_current() is None
+    close_app(app)
+    print("Modal windows and nested grab restoration passed")
 
 
 def startup_smoke(path: Path) -> None:
@@ -117,7 +158,46 @@ def startup_smoke(path: Path) -> None:
     print("Startup password dialog passed")
 
 
+def wait_for_tooltip(root: tk.Tk) -> None:
+    done = tk.BooleanVar(root)
+    root.after(500, done.set, True)
+    root.wait_variable(done)
+
+
+def tooltip_smoke(path: Path) -> None:
+    root = tk.Tk()
+    app = App(root, Store(path / "tooltip.hexage"))
+    root.update()
+    about = next(
+        button
+        for button in app.toolbar.winfo_children()
+        if isinstance(button, IconButton) and button.cget("text") == "О программе"
+    )
+    about.focus_force()
+    root.update()
+    with patch.object(about, "winfo_pointerxy") as pointer:
+        pointer.return_value = (about.winfo_rootx() + 2, about.winfo_rooty() + 2)
+        about.event_generate("<Enter>")
+        wait_for_tooltip(root)
+        assert about._tip is not None
+        about.invoke()
+        root.update()
+        assert about._tip is None
+        pointer.return_value = (root.winfo_rootx() + 300, root.winfo_rooty() + 200)
+        dismiss_modal(root)
+        about.event_generate("<Enter>")  # Tk can send a crossing event on grab release.
+        wait_for_tooltip(root)
+        assert about._tip is None
+        root.tk.call("tk::TabToWindow", about)
+        wait_for_tooltip(root)
+        assert about._tip is not None
+    close_app(app)
+    print("Tooltip hover, modal close, and keyboard traversal passed")
+
+
 if __name__ == "__main__":
     with TemporaryDirectory() as directory:
         smoke(Path(directory))
+        modal_smoke(Path(directory))
         startup_smoke(Path(directory))
+        tooltip_smoke(Path(directory))

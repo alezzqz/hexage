@@ -51,7 +51,8 @@ class IconButton(ttk.Button):
         )
         self._tip: tk.Toplevel | None = None
         self._tip_job: str | None = None
-        for event in ("<Enter>", "<FocusIn>"):
+        # Returning focus after a modal dialog is not keyboard traversal.
+        for event in ("<Enter>", "<<TraverseIn>>"):
             self.bind(event, self._schedule_tip, add="+")
         for event in (
             "<Leave>",
@@ -65,11 +66,22 @@ class IconButton(ttk.Button):
 
     def _schedule_tip(self, event: tk.Event) -> None:
         self._hide_tip(event)
-        self._tip_job = self.after(450, self._show_tip)
+        from_pointer = event.type == tk.EventType.Enter
+        self._tip_job = self.after(450, self._show_tip, from_pointer)
 
-    def _show_tip(self) -> None:
+    def _show_tip(self, from_pointer: bool) -> None:
         self._tip_job = None
         if not self.winfo_ismapped():
+            return
+        grab = str(self.tk.call("grab", "current", self))
+        if grab not in ("", str(self.winfo_toplevel())):
+            return
+        if from_pointer:
+            x, y = self.winfo_pointerxy()
+            hovered = self.tk.call("winfo", "containing", "-displayof", self, x, y)
+            if str(hovered) != str(self):
+                return
+        elif self.focus_get() is not self:
             return
         tip = self._tip = tk.Toplevel(self)
         tip.withdraw()

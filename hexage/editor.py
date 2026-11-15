@@ -20,7 +20,7 @@ from collections.abc import Callable
 from tkinter import ttk
 
 from . import dialogs
-from .dialog_position import show_centered
+from .dialog_position import has_modal_child, show_modal
 from .icon_button import pack_icon
 from .model import Note, identifier
 
@@ -37,7 +37,9 @@ class Editor(tk.Toplevel):
         self.rowconfigure(1, weight=1)
         self.name = ttk.Entry(self)
         self.name.grid(row=0, column=0, columnspan=2, sticky="ew", padx=12, pady=12)
-        self.text = tk.Text(self, wrap="word", undo=True, exportselection=False)
+        self.text = tk.Text(
+            self, font="TkTextFont", wrap="word", undo=True, exportselection=False
+        )
         self.text.grid(row=1, column=0, sticky="nsew", padx=(12, 0))
         scroll = ttk.Scrollbar(self, command=self.text.yview)
         scroll.grid(row=1, column=1, sticky="ns", padx=(0, 12))
@@ -53,8 +55,12 @@ class Editor(tk.Toplevel):
         self.text.bind("<Control-v>", self.paste_selection)
         self.text.bind("<Button-3>", self.context_menu)
         self.protocol("WM_DELETE_WINDOW", self.close)
-        show_centered(self, parent, size=(640, 480))
-        (self.name if self.editing else self.text).focus_set()
+        self.menu = tk.Menu(self, tearoff=False)
+        self.menu.add_command(label="Копировать", command=self.copy_selection)
+        self.menu.add_command(label="Вставить", command=self.paste_selection)
+
+    def show(self) -> None:
+        show_modal(self, self.name if self.editing else self.text, size=(640, 480))
 
     def set_mode(self, editing: bool) -> None:
         self.editing = editing
@@ -92,6 +98,8 @@ class Editor(tk.Toplevel):
         self.save_note(self, note)
 
     def close(self) -> None:
+        if has_modal_child(self):
+            return
         if not self.dirty() or dialogs.ask_yes_no(
             "Несохранённые изменения",
             "Закрыть и отбросить правки?",
@@ -120,12 +128,6 @@ class Editor(tk.Toplevel):
         return "break"
 
     def context_menu(self, event: tk.Event) -> None:
-        menu = tk.Menu(self, tearoff=False)
-        menu.add_command(label="Копировать", command=self.copy_selection)
-        if self.editing:
-            menu.add_command(label="Вставить", command=self.paste_selection)
-        try:
-            menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            menu.grab_release()
-            menu.destroy()
+        self.menu.entryconfigure(1, state="normal" if self.editing else "disabled")
+        # Tk restores the editor's grab when the popup closes.
+        self.menu.tk_popup(event.x_root, event.y_root)

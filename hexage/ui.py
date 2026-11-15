@@ -15,6 +15,7 @@
 # the GNU General Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
+import sys
 import tkinter as tk
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -22,14 +23,14 @@ from importlib.resources import files
 from pathlib import Path
 from threading import Event
 from time import monotonic
-from tkinter import filedialog, ttk
+from tkinter import filedialog, font, ttk
 
 from . import dialogs
 from .chooser import choose
 from .cloud import EXPORT_OK, Cloud, Snapshot, export_to
 from .cloud_window import CloudWindow
 from .config import OAuthConfig, config_path, ensure_config, load_oauth_config
-from .dialog_position import show_centered
+from .dialog_position import has_modal_child, show_modal
 from .editor import Editor
 from .icon_button import pack_icon
 from .model import HexageError, Note
@@ -65,6 +66,11 @@ class App:
         }
         self.cloud_cancel: Event | None = None
         self.cloud_window: CloudWindow | None = None
+        default_font = font.nametofont("TkDefaultFont", root=root)
+        self.app_heading = default_font.copy()
+        self.app_heading.configure(size=24, weight="bold")
+        self.about_heading = default_font.copy()
+        self.about_heading.configure(size=16, weight="bold")
         root.title("Hexage")
         root.geometry("680x480")
         root.minsize(max(480, round(root.winfo_fpixels("360p"))), 330)
@@ -103,16 +109,15 @@ class App:
         pack_icon(self.toolbar, "info", "О программе", self.show_about)
 
     def show_about(self) -> None:
+        if not self.available():
+            return
         dialog = tk.Toplevel(self.root)
         dialog.withdraw()
         dialog.title("О программе")
-        dialog.transient(self.root)
         dialog.resizable(False, False)
         body = ttk.Frame(dialog, padding=18)
         body.pack(fill="both", expand=True)
-        ttk.Label(body, text="Hexage", font=("TkDefaultFont", 16, "bold")).pack(
-            anchor="w"
-        )
+        ttk.Label(body, text="Hexage", font=self.about_heading).pack(anchor="w")
         ttk.Label(body, text="Зашифрованные заметки").pack(anchor="w", pady=(4, 0))
         ttk.Label(body, text="© 2026 TermoGRAF").pack(anchor="w", pady=(4, 0))
         ttk.Label(body, text="Версия 1.0").pack(anchor="w", pady=(0, 6))
@@ -132,8 +137,7 @@ class App:
         )
         link.pack(anchor="w")
         dialog.bind("<Escape>", lambda _: dialog.destroy())
-        show_centered(dialog, self.root)
-        license_link.focus_set()
+        show_modal(dialog, license_link)
 
     def needs_setup(self) -> bool:
         try:
@@ -146,9 +150,7 @@ class App:
         return False
 
     def render_locked(self) -> None:
-        ttk.Label(self.frame, text="Hexage", font=("TkDefaultFont", 24, "bold")).pack(
-            anchor="w"
-        )
+        ttk.Label(self.frame, text="Hexage", font=self.app_heading).pack(anchor="w")
         row = self.toolbar
         row.pack(anchor="w", pady=16)
         if self.needs_setup():
@@ -207,6 +209,7 @@ class App:
         self.status.set("Выполняется операция…")
         future = self.pool.submit(operation)
         self.job = future
+        self.set_wait_cursor(True)
         if self.cloud_window:
             self.cloud_window.sync_actions()
         self.root.after(30, self.poll, future, generation, done)
@@ -216,9 +219,10 @@ class App:
             self.root.after(30, self.poll, future, generation, done)
             return
         self.job = None
-        parent = (
-            self.cloud_window if self.cloud_cancel is not None else None
-        ) or self.root
+        self.set_wait_cursor(False)
+        parent = self.cloud_window or self.root
+        if self.editor and self.editor.winfo_exists():
+            parent = self.editor
         self.cloud_cancel = None
         if self.cloud_window:
             self.cloud_window.sync_actions()
@@ -235,6 +239,17 @@ class App:
             )
         else:
             done(result)
+
+    def set_wait_cursor(self, waiting: bool) -> None:
+        widgets: list[tk.Misc] = [self.root]
+        if self.cloud_window:
+            widgets.append(self.cloud_window)
+        if self.editor and self.editor.winfo_exists():
+            widgets.extend((self.editor, self.editor.name, self.editor.text))
+        for widget in widgets:
+            # Text fields have their own cursor and do not inherit the window's.
+            default = widget.configure("cursor")[-2]
+            widget.configure(cursor="watch" if waiting else default)
 
     def activate(self, session: Session) -> None:
         self.session = session
@@ -295,6 +310,7 @@ class App:
             if self.cloud_cancel is not None:
                 self.cloud_cancel.set()
             self.generation += 1
+            self.set_wait_cursor(False)
             self.session = None
             self.discard_editor()
             self.destroy_cloud_window()
@@ -302,6 +318,8 @@ class App:
             self.render()
 
     def close(self) -> None:
+        if has_modal_child(self.root):
+            return
         if self.confirm_discard():
             if self.cloud_cancel is not None:
                 self.cloud_cancel.set()
@@ -316,6 +334,7 @@ class App:
             self.editor.lift()
             return
         self.editor = Editor(self.root, note, self.save_note)
+        self.editor.show()
 
     def open_selected(self) -> None:
         if self.session and (selected := self.list.curselection()):
@@ -462,8 +481,11 @@ class App:
             return
         if self.clouds and self.available():
             self.cloud_window = CloudWindow(self)
+            self.cloud_window.show()
 
     def close_cloud_window(self) -> None:
+        if self.cloud_window and has_modal_child(self.cloud_window):
+            return
         self.cancel_cloud()
         self.destroy_cloud_window()
 
@@ -477,6 +499,7 @@ class App:
             return
         self.cloud_cancel.set()
         self.generation += 1
+        self.set_wait_cursor(False)
         self.status.set("Операция отменена. Облачное хранилище могло уже измениться.")
         if self.cloud_window:
             self.cloud_window.clear_snapshots()
@@ -536,7 +559,6 @@ class App:
             window,
             "Куда экспортировать снимок",
             list(self.clouds.items()),
-            anchor=self.root,
             multiple=True,
         )
         if targets and self.cloud_window is window and self.session is session:
@@ -619,7 +641,17 @@ def restore_summary(plan: RestorePlan, session: Session | None) -> str:
     return "\n".join(lines)
 
 
+def _enable_system_dpi() -> None:
+    if sys.platform == "win32":
+        from ctypes import windll
+
+        # The EXE declares this in its manifest; a direct Python launch needs
+        # it before Tk creates a window. Tk 8.6 uses one scale for the session.
+        windll.user32.SetProcessDPIAware()
+
+
 def main() -> None:
+    _enable_system_dpi()
     root = tk.Tk()
     root.title("Hexage")
     assets = files(__package__).joinpath("assets")
