@@ -13,7 +13,8 @@ Hexage хранит конфиденциальные текстовые заме
 
 ## Запуск
 
-Целевые платформы — Windows 11 и Linux с Tk 8.6, например Ubuntu 24.04.
+Целевые платформы — Windows 11 и Linux с Tk 8.6 или 9.0 и поддержкой Xft,
+например Ubuntu 24.04.
 Поддерживаемый диапазон приёмки — CPython 3.11–3.13. В установщике Python
 для Windows включите Tcl/Tk. Для системного Python на Debian и Ubuntu
 установите `python3-tk` и `python3-venv`.
@@ -58,6 +59,93 @@ python3 -m venv .venv
 Синтетическая проверка Tk в графическом сеансе — `python -m tests.gui_smoke`.
 Она записывает тестовую строку в системный буфер обмена и очищает его.
 
+## Установка на Linux
+
+### Готовый бинарник
+
+Пользователю не нужен Python: Tk и зависимости входят в исполняемый файл.
+Сначала соберите бинарник (см. «Сборка исполняемых файлов»), затем
+установите его глобально:
+
+```bash
+bash scripts/install-linux.sh
+hexage
+```
+
+Скрипт копирует `dist/linux/hexage` в `/usr/local/bin`, лицензии — в
+`/usr/local/share/doc/hexage`, иконку и ярлык — в `/usr/local/share`.
+Для записи в `/usr/local` скрипт при необходимости запросит `sudo`.
+Другой каталог задаётся `--prefix`, другой бинарник — `--binary`,
+удаление — `--uninstall`, отказ от ярлыка — `--no-desktop`.
+Для установки только для текущего пользователя:
+
+```bash
+bash scripts/install-linux.sh --prefix ~/.local
+```
+
+Если каталог установки не входит в `PATH`, скрипт подскажет, что добавить.
+
+Шрифты зависят от Tk, с которым собран бинарник. Релизная сборка проверяет
+наличие Xft и не создаёт бинарник с устаревшими X11-шрифтами, поэтому
+установщику не нужно «лечить» шрифты на машине пользователя.
+
+### Из исходников
+
+Нужен Python 3.11–3.13 и Tk с Xft. Пакеты:
+
+**Ubuntu 24.04 / Debian**
+
+```bash
+sudo apt install python3 python3-venv python3-tk
+```
+
+**Fedora**
+
+```bash
+sudo dnf install python3 python3-tkinter
+```
+
+**Arch**
+
+```bash
+sudo pacman -S python tk
+```
+
+Используйте системный Python: для него пакет `python3-tk` даёт Tk с Xft.
+Python, установленный через `uv python install`, может содержать Tk без
+Xft. Чтобы venv использовал системный интерпретатор:
+
+```bash
+uv venv --python /usr/bin/python3.12
+```
+
+Проверить окружение и создать `.venv`:
+
+```bash
+bash scripts/setup-linux.sh --check
+bash scripts/setup-linux.sh
+.venv/bin/python -m hexage
+```
+
+Скрипт не запускает `sudo` и не ставит системные пакеты. Он проверяет
+версию Python, наличие `tkinter` и `fontsystem`, создаёт `.venv` и
+устанавливает `.[dev]`. Флаг `--build` добавляет `.[build]`,
+`--python PATH` выбирает интерпретатор. Если `.venv` уже существует,
+скрипт по умолчанию использует его Python. При Tk без Xft скрипт печатает
+команды для дистрибутива и завершается с ошибкой.
+
+Вручную:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+.venv/bin/python -m tkinter
+.venv/bin/python -m hexage
+```
+
+Диагностика шрифтов и действия при `fontsystem=x11` описаны в разделе
+«Запуск».
+
 ## Сборка исполняемых файлов
 
 Собирайте на целевой ОС и архитектуре. Скрипты используют PyInstaller
@@ -74,7 +162,10 @@ python3 -m venv .venv
 .\dist\windows\Hexage.exe
 ```
 
-На Linux установите Tk для сборочного Python и `binutils` (нужен `objdump`).
+На Linux установите Tk с Xft для сборочного Python и `binutils` (нужен
+`objdump`). Скрипт проверяет, что Tk сборочного Python слинкован с Xft,
+и останавливает сборку, если это не так: иначе бинарник получит
+устаревшие X11-шрифты. Осознанный обход — `--allow-legacy-tk`.
 Для совместимости с несколькими дистрибутивами собирайте на самом старом
 из целевых дистрибутивов с glibc.
 

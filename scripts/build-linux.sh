@@ -27,19 +27,62 @@ project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd -- "$project_root"
 python="${HEXAGE_BUILD_PYTHON:-.venv/bin/python}"
 
-# A Tk without Xft bundles only legacy X11 fonts, which makes Latin and
-# Cyrillic text look inconsistent. The check needs a graphical session.
-if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
-    if fontsystem="$("$python" -c 'import tkinter as tk
-root = tk.Tk()
-print(root.tk.eval("tk::pkgconfig get fontsystem"))
-root.destroy()' 2>/dev/null)"; then
-        if [[ "$fontsystem" != xft ]]; then
-            printf '%s\n' \
-                'Warning: this Python Tk has no Xft support; the binary will use legacy X11 fonts. Install python3-tk for the build Python.' >&2
-        fi
-    fi
+allow_legacy=0
+if [[ "${HEXAGE_ALLOW_LEGACY_TK:-0}" == 1 ]]; then
+    allow_legacy=1
 fi
+
+usage() {
+    printf '%s\n' \
+        'Usage: bash scripts/build-linux.sh [--allow-legacy-tk]' \
+        '' \
+        '  --allow-legacy-tk  Build even if the build Python uses Tk without Xft.'
+}
+
+check_xft() {
+    if [[ "$allow_legacy" == 1 ]]; then
+        printf '%s\n' 'Warning: building with legacy X11 fonts by request.' >&2
+        return
+    fi
+    local tkinter tk_lib
+    tkinter=$("$python" -c 'import _tkinter; print(_tkinter.__file__)' \
+        2>/dev/null) || return 0
+    tk_lib=$(ldd "$tkinter" 2>/dev/null |
+        awk '/libtcl.*tk|libtk/ { print $3; exit }')
+    if [[ -z "$tk_lib" || ! -f "$tk_lib" ]]; then
+        printf '%s\n' \
+            'Warning: could not locate the Tk library; Xft support not verified.' \
+            >&2
+        return
+    fi
+    if ! objdump -p "$tk_lib" 2>/dev/null | grep -q 'NEEDED.*libXft'; then
+        printf '%s\n' \
+            'Error: this Python Tk has no Xft support, so the binary would use' \
+            'legacy X11 fonts. Use a Python built against Tk with Xft, or pass' \
+            '--allow-legacy-tk to build anyway.' >&2
+        exit 1
+    fi
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --allow-legacy-tk)
+            allow_legacy=1
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *)
+            printf 'Unknown option: %s\n' "$1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
+check_xft
 
 "$python" -m PyInstaller --noconfirm --onefile --noupx --name hexage \
     --distpath dist/linux --workpath build/linux --specpath build/linux \
