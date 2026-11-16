@@ -68,7 +68,11 @@ def _show_centered(
     dialog: tk.Toplevel, anchor: tk.Misc, *, size: tuple[int, int] | None = None
 ) -> None:
     dialog.update_idletasks()
-    width, height = size or (dialog.winfo_reqwidth(), dialog.winfo_reqheight())
+    preferred = size or (dialog.winfo_reqwidth(), dialog.winfo_reqheight())
+    # An explicit size is a minimum: a smaller window clips the content, for
+    # example the action buttons at the bottom of the cloud window.
+    width = max(preferred[0], dialog.winfo_reqwidth())
+    height = max(preferred[1], dialog.winfo_reqheight())
     # Geometry uses window-manager coordinates, including the title bar offset.
     x = anchor.winfo_x() + (anchor.winfo_width() - width) // 2
     y = anchor.winfo_y() + (anchor.winfo_height() - height) // 2

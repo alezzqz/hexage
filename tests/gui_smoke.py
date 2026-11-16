@@ -140,6 +140,10 @@ def modal_smoke(path: Path) -> None:
     app.open_cloud_window()
     window = app.cloud_window
     assert window is not None and root.grab_current() is window
+    root.update_idletasks()
+    assert window.winfo_height() >= window.winfo_reqheight(), (
+        "Cloud window must open tall enough for its action buttons"
+    )
     assert window.current_cloud().provider.name == "Google Drive"
     window.provider.set("Яндекс Диск")
     assert window.current_cloud().provider.name == "Яндекс Диск"
