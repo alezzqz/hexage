@@ -16,3 +16,10 @@
 # <https://www.gnu.org/licenses/>.
 
 """Hexage encrypted notes."""
+
+# Importing the package is the last point before any module can import requests,
+# which initializes OpenSSL on import and cannot recover from a rejected
+# distribution config afterwards. See hexage.tls for the reason.
+from .tls import apply_openssl_defaults
+
+apply_openssl_defaults()

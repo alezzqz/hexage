@@ -64,6 +64,17 @@ check_xft() {
     fi
 }
 
+check_tls() {
+    if ! "$python" -c 'import hexage, ssl; ssl.create_default_context()' \
+        >/dev/null 2>&1; then
+        printf '%s\n' \
+            'Error: the build Python cannot create a TLS context after' \
+            'importing hexage. Check the system openssl.cnf or set another' \
+            'HEXAGE_BUILD_PYTHON.' >&2
+        exit 1
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --allow-legacy-tk)
@@ -83,9 +94,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 check_xft
+check_tls
 
 "$python" -m PyInstaller --noconfirm --onefile --noupx --name hexage \
     --distpath dist/linux --workpath build/linux --specpath build/linux \
+    --runtime-hook scripts/openssl_runtime_hook.py \
     --collect-data hexage scripts/hexage_entry.py
 
 cp LICENSE LICENSE.GPL-3.0 dist/linux/

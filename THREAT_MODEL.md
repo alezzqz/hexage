@@ -17,6 +17,15 @@ password, the key phrase, keys, notes, and history are never sent to providers
 in plaintext. A provider can delete or hide a snapshot and show an available
 older version. With a truncated history the ordering may be unknown.
 
+Cloud requests use the TLS implementation and CA store bundled with the
+application. On Linux, Hexage sets `OPENSSL_CONF=/dev/null` before any TLS use
+unless the variable is already defined, because the bundled OpenSSL rejects
+some distribution configuration files and would then fail every HTTPS request.
+This bypasses distribution TLS policy such as minimum protocol version,
+security level, or FIPS settings. Certificate chain and hostname verification
+still apply through the bundled CA store. An explicit `OPENSSL_CONF` restores
+the distribution policy.
+
 Auto-lock triggers after five minutes without input events in the application.
 It closes open editors, discards unsaved edits, and hides notes. A write request
 already handed to a worker thread may still complete. Python, Tk, the clipboard,
