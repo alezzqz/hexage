@@ -49,7 +49,7 @@ class CloudWindow(tk.Toplevel):
         self.bind("<Escape>", lambda _: app.close_cloud_window())
 
     def show(self) -> None:
-        show_modal(self, self.provider, size=(700, 400))
+        show_modal(self, self.provider_buttons[0], size=(700, 400))
 
     def build_snapshot_list(self, body: ttk.Frame) -> None:
         ttk.Label(body, text="Снимки · дата сохранения в облаке (UTC)").pack(anchor="w")
@@ -76,12 +76,18 @@ class CloudWindow(tk.Toplevel):
         row = ttk.Frame(body)
         row.pack(fill="x", pady=(0, 12))
         ttk.Label(row, text="Провайдер").pack(side="left", padx=(0, 8))
-        self.provider = ttk.Combobox(
-            row, state="readonly", values=tuple(self.app.clouds)
-        )
-        self.provider.pack(side="left")
-        self.provider.current(0)
-        self.provider.bind("<<ComboboxSelected>>", lambda _: self.clear_snapshots())
+        self.provider = tk.StringVar(value=next(iter(self.app.clouds)))
+        self.provider_buttons: list[ttk.Radiobutton] = []
+        for name in self.app.clouds:
+            button = ttk.Radiobutton(
+                row,
+                text=name,
+                value=name,
+                variable=self.provider,
+                command=self.clear_snapshots,
+            )
+            button.pack(side="left", padx=(0, 8))
+            self.provider_buttons.append(button)
         self.refresh_button = self.action(
             row, "refresh", "Обновить список снимков", self.app.refresh_cloud
         )
@@ -144,7 +150,8 @@ class CloudWindow(tk.Toplevel):
         busy = self.app.job is not None
         cancel = self.app.cloud_cancel
         selected = self.selected_snapshot() is not None
-        self.provider.configure(state="disabled" if busy else "readonly")
+        for button in self.provider_buttons:
+            button.state(("disabled",) if busy else ("!disabled",))
         for button, enabled in (
             (self.refresh_button, not busy),
             (self.disconnect_button, not busy),

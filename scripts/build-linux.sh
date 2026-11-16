@@ -27,6 +27,20 @@ project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd -- "$project_root"
 python="${HEXAGE_BUILD_PYTHON:-.venv/bin/python}"
 
+# A Tk without Xft bundles only legacy X11 fonts, which makes Latin and
+# Cyrillic text look inconsistent. The check needs a graphical session.
+if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
+    if fontsystem="$("$python" -c 'import tkinter as tk
+root = tk.Tk()
+print(root.tk.eval("tk::pkgconfig get fontsystem"))
+root.destroy()' 2>/dev/null)"; then
+        if [[ "$fontsystem" != xft ]]; then
+            printf '%s\n' \
+                'Warning: this Python Tk has no Xft support; the binary will use legacy X11 fonts. Install python3-tk for the build Python.' >&2
+        fi
+    fi
+fi
+
 "$python" -m PyInstaller --noconfirm --onefile --noupx --name hexage \
     --distpath dist/linux --workpath build/linux --specpath build/linux \
     --collect-data hexage scripts/hexage_entry.py

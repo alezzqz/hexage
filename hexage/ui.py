@@ -25,7 +25,7 @@ from threading import Event
 from time import monotonic
 from tkinter import filedialog, font, ttk
 
-from . import dialogs
+from . import dialogs, fonts
 from .chooser import choose
 from .cloud import EXPORT_OK, Cloud, Snapshot, export_to
 from .cloud_window import CloudWindow
@@ -650,9 +650,16 @@ def _enable_system_dpi() -> None:
         windll.user32.SetProcessDPIAware()
 
 
+def _configure_fonts(root: tk.Tk) -> None:
+    fonts.apply(root)
+    if message := fonts.legacy_fonts_message(root):
+        print(message, file=sys.stderr)
+
+
 def main() -> None:
     _enable_system_dpi()
     root = tk.Tk()
+    _configure_fonts(root)
     root.title("Hexage")
     assets = files(__package__).joinpath("assets")
     icons = [

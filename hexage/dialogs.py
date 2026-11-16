@@ -68,7 +68,7 @@ def show_message(title: str, message: str, *, parent: tk.Tk | tk.Toplevel) -> No
 
 def ask_password(prompt: str, *, parent: tk.Tk | tk.Toplevel) -> str | None:
     dialog = Dialog(parent, "Hexage", prompt)
-    entry = ttk.Entry(dialog.body, show="•", width=36)
+    entry = ttk.Entry(dialog.body, show="*", width=36)
     entry.pack(fill="x", pady=(0, 12))
     row = ttk.Frame(dialog.body)
     row.pack(anchor="e")

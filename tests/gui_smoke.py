@@ -22,6 +22,7 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import monotonic, perf_counter
+from tkinter import font
 from unittest.mock import patch
 
 from hexage import ui
@@ -29,6 +30,7 @@ from hexage.chooser import choose
 from hexage.codec import seal
 from hexage.config import OAuthConfig
 from hexage.dialogs import Dialog
+from hexage.fonts import TEXT_FONTS, apply, legacy_fonts_message
 from hexage.icon_button import IconButton
 from hexage.model import Note
 from hexage.session import initialize, plan_restore, save, unlock
@@ -57,6 +59,19 @@ def clipboard(editor):
     editor.paste_selection()
     assert text.get("1.0", "end-1c") == "бв\n第二бв\n第二第二行"
     editor.clipboard_clear()
+
+
+def font_smoke() -> None:
+    root = tk.Tk()
+    family = apply(root)
+    assert family is not None, "None of the preferred font families is installed"
+    for name in TEXT_FONTS:
+        assert font.nametofont(name, root=root).cget("family") == family
+    fontsystem = root.tk.eval("tk::pkgconfig get fontsystem")
+    if fontsystem == "xft":
+        assert legacy_fonts_message(root) is None
+    root.destroy()
+    print(f"Fonts: {family} ({fontsystem})")
 
 
 def smoke(path: Path) -> None:
@@ -110,7 +125,11 @@ def dismiss_modal(owner: tk.Tk | tk.Toplevel) -> None:
 
 def modal_smoke(path: Path) -> None:
     root = tk.Tk()
-    app = App(root, Store(path / "modal.hexage"), OAuthConfig(google_client_id="test"))
+    app = App(
+        root,
+        Store(path / "modal.hexage"),
+        OAuthConfig(google_client_id="test", yandex_client_id="test"),
+    )
     root.update()
     app.show_about()
     assert root.grab_current() is not None
@@ -121,6 +140,10 @@ def modal_smoke(path: Path) -> None:
     app.open_cloud_window()
     window = app.cloud_window
     assert window is not None and root.grab_current() is window
+    assert window.current_cloud().provider.name == "Google Drive"
+    window.provider.set("Яндекс Диск")
+    assert window.current_cloud().provider.name == "Яндекс Диск"
+    window.provider.set("Google Drive")
     root.after(100, dismiss_modal, window)
     assert choose(window, "Тест", [("Пункт", 1)]) == []
     assert root.grab_current() is window
@@ -201,3 +224,4 @@ if __name__ == "__main__":
         modal_smoke(Path(directory))
         startup_smoke(Path(directory))
         tooltip_smoke(Path(directory))
+        font_smoke()
