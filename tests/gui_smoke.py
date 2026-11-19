@@ -21,12 +21,15 @@ import tkinter as tk
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event
 from time import monotonic, perf_counter
 from tkinter import font
 from unittest.mock import patch
 
 from hexage import ui
 from hexage.chooser import choose
+from hexage.cloud import EXPORT_OK, Snapshot
+from hexage.cloud_window import CloudWindow
 from hexage.codec import seal
 from hexage.config import OAuthConfig
 from hexage.dialogs import Dialog
@@ -154,6 +157,38 @@ def dismiss_modal(owner: tk.Tk | tk.Toplevel) -> None:
     dialog.destroy()
 
 
+def cloud_export_smoke(app: App, window: CloudWindow) -> None:
+    session = initialize(app.store, PASSWORD)
+    app.activate(session)
+    combo = window.provider_combo
+    assert combo.instate(("readonly",))
+    assert window.current_cloud().provider.name == "Google Drive"
+    window.show_snapshots([Snapshot("synthetic", "synthetic.hexage", "")])
+    combo.current(1)
+    combo.event_generate("<<ComboboxSelected>>")
+    assert window.snapshot_list.size() == 0
+    cloud = window.current_cloud()
+    assert cloud.provider.name == "Яндекс Диск"
+    cancel = Event()
+    with (
+        patch.object(app, "run_cloud") as run_cloud,
+        patch.object(
+            ui, "export_to", return_value={cloud.provider.name: EXPORT_OK}
+        ) as export,
+        patch.object(ui.dialogs, "show_message"),
+        patch.object(app, "refresh_cloud") as refresh,
+    ):
+        window.export_button.invoke()
+        run_cloud.assert_called_once()
+        assert app.root.grab_current() is window
+        operation, done = run_cloud.call_args.args
+        done(operation(cancel))
+        export.assert_called_once_with(
+            (cloud,), app.store.snapshot(session.digest), cancel
+        )
+        refresh.assert_called_once_with()
+
+
 def modal_smoke(path: Path) -> None:
     root = tk.Tk()
     app = App(
@@ -175,10 +210,7 @@ def modal_smoke(path: Path) -> None:
     assert window.winfo_height() >= window.winfo_reqheight(), (
         "Cloud window must open tall enough for its action buttons"
     )
-    assert window.current_cloud().provider.name == "Google Drive"
-    window.provider.set("Яндекс Диск")
-    assert window.current_cloud().provider.name == "Яндекс Диск"
-    window.provider.set("Google Drive")
+    cloud_export_smoke(app, window)
     root.after(100, dismiss_modal, window)
     assert choose(window, "Тест", [("Пункт", 1)]) == []
     assert root.grab_current() is window

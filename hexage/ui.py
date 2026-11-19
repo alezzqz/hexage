@@ -26,7 +26,6 @@ from time import monotonic
 from tkinter import filedialog, font, ttk
 
 from . import dialogs, fonts
-from .chooser import choose
 from .cloud import EXPORT_OK, Cloud, Snapshot, export_to
 from .cloud_window import CloudWindow
 from .config import OAuthConfig, config_path, ensure_config, load_oauth_config
@@ -594,26 +593,17 @@ class App:
         window, session = self.cloud_window, self.session
         if not window or not session or not self.available():
             return
-        targets = choose(
-            window,
-            "Куда экспортировать снимок",
-            list(self.clouds.items()),
-            multiple=True,
+        cloud = window.current_cloud()
+        self.run_cloud(
+            lambda cancel: export_to(
+                (cloud,), self.store.snapshot(session.digest), cancel
+            ),
+            lambda results: self.cloud_exported(window, results),
         )
-        if targets and self.cloud_window is window and self.session is session:
-            self.run_cloud(
-                lambda cancel: export_to(
-                    tuple(targets), self.store.snapshot(session.digest), cancel
-                ),
-                lambda results: self.cloud_exported(window, targets, results),
-            )
 
-    def cloud_exported(
-        self, window: CloudWindow, targets: list[Cloud], results: dict[str, str]
-    ) -> None:
+    def cloud_exported(self, window: CloudWindow, results: dict[str, str]) -> None:
         current = window.current_cloud()
-        if current in targets:
-            window.clear_snapshots()
+        window.clear_snapshots()
         dialogs.show_message(
             "Экспорт в облако",
             "\n".join(f"{target} — {status}" for target, status in results.items()),
