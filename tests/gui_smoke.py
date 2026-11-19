@@ -117,6 +117,37 @@ def close_app(app: App) -> None:
     app.close()
 
 
+def note_list_smoke(path: Path) -> None:
+    store = Store(path / "note-list.hexage")
+    notes = (
+        Note("1" * 32, "Яблоко", "Синтетический текст"),
+        Note("2" * 32, "Бета", ""),
+        Note("3" * 32, "альфа БЕТА", ""),
+    )
+    session = save(store, initialize(store, PASSWORD), notes)
+    root = tk.Tk()
+    app = App(root, store)
+    app.activate(session)
+    assert app.list.get(0, "end") == (notes[2].title, notes[1].title, notes[0].title)
+    app.list.selection_set(1)
+    app.filter_text.set("бЕт")
+    assert app.list.get(0, "end") == (notes[2].title, notes[1].title)
+    assert app.list.curselection() == (1,)
+    with patch.object(app, "edit") as edit:
+        app.open_selected()
+        edit.assert_called_once_with(notes[1])
+    app.filter_text.set("нет совпадений")
+    assert app.list.size() == 0
+    app.filter_text.set("")
+    assert app.list.size() == 3
+    app.lock(force=True)
+    assert app.visible_notes == () and app.filter_text.get() == ""
+    app.activate(session)
+    assert app.list.size() == 3
+    close_app(app)
+    print("Note sorting, live title filtering, selection, and lock clearing passed")
+
+
 def dismiss_modal(owner: tk.Tk | tk.Toplevel) -> None:
     dialog = owner.grab_current()
     assert isinstance(dialog, tk.Toplevel) and dialog.master is owner
@@ -225,6 +256,7 @@ def tooltip_smoke(path: Path) -> None:
 if __name__ == "__main__":
     with TemporaryDirectory() as directory:
         smoke(Path(directory))
+        note_list_smoke(Path(directory))
         modal_smoke(Path(directory))
         startup_smoke(Path(directory))
         tooltip_smoke(Path(directory))

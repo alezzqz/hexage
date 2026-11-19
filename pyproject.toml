@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hexage"
-version = "0.1.0"
+version = "1.1"
 description = "Encrypted notes"
 license = "LGPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.GPL-3.0"]

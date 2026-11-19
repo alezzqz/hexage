@@ -55,6 +55,9 @@ class App:
     ) -> None:
         self.root, self.store = root, store
         self.session: Session | None = None
+        self.visible_notes: tuple[Note, ...] = ()
+        self.filter_text = tk.StringVar(root)
+        self.filter_text.trace_add("write", self.refresh_notes)
         self.editor: Editor | None = None
         self.job: Future | None = None
         self.generation = 0
@@ -81,6 +84,7 @@ class App:
         footer = ttk.Frame(root, padding=(18, 4))
         footer.pack(fill="x")
         ttk.Label(footer, textvariable=self.status).pack(side="left")
+        ttk.Sizegrip(root).place(relx=1.0, rely=1.0, anchor="se")
         for event in ("<KeyPress>", "<ButtonPress>", "<Motion>", "<MouseWheel>"):
             root.bind_all(event, self.activity, add="+")
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -120,7 +124,7 @@ class App:
         ttk.Label(body, text="Hexage", font=self.about_heading).pack(anchor="w")
         ttk.Label(body, text="Зашифрованные заметки").pack(anchor="w", pady=(4, 0))
         ttk.Label(body, text="© 2026 TermoGRAF").pack(anchor="w", pady=(4, 0))
-        ttk.Label(body, text="Версия 1.0").pack(anchor="w", pady=(0, 6))
+        ttk.Label(body, text="Версия 1.1").pack(anchor="w", pady=(0, 6))
         ttk.Label(body, text="Лицензия: GNU LGPL v3 или новее").pack(anchor="w")
         license_link = ttk.Button(
             body,
@@ -169,15 +173,50 @@ class App:
     def render_notes(self) -> None:
         self.toolbar.pack(fill="x", pady=(0, 12))
         self.render_note_actions()
-        self.list = tk.Listbox(self.frame, selectmode="extended", exportselection=False)
-        self.list.pack(fill="both", expand=True)
-        for note in self.session.opened.vault.notes:
-            self.list.insert("end", note.title)
+        search = ttk.Frame(self.frame)
+        search.pack(fill="x", pady=(0, 8))
+        ttk.Label(search, text="Фильтр по названию:").pack(side="left", padx=(0, 8))
+        filter_entry = ttk.Entry(search, textvariable=self.filter_text)
+        filter_entry.pack(fill="x", expand=True)
+        filter_entry.focus_set()
+        notes_frame = ttk.Frame(self.frame)
+        notes_frame.pack(fill="both", expand=True)
+        self.list = tk.Listbox(
+            notes_frame, selectmode="extended", exportselection=False
+        )
+        scrollbar = ttk.Scrollbar(
+            notes_frame, orient="vertical", command=self.list.yview
+        )
+        scrollbar.pack(side="right", fill="y")
+        self.list.pack(side="left", fill="both", expand=True)
+        self.list.configure(yscrollcommand=scrollbar.set)
+        self.refresh_notes()
         self.list.bind("<Double-Button-1>", lambda _: self.open_selected())
         self.list.bind("<Return>", lambda _: self.open_selected())
         ttk.Label(
             self.frame, text="Через 5 минут бездействия правки будут отброшены."
         ).pack(anchor="w", pady=(8, 0))
+
+    def refresh_notes(self, *_trace_args: str) -> None:
+        if self.session is None:
+            return
+        selected = {self.visible_notes[i].id for i in self.list.curselection()}
+        query = self.filter_text.get().casefold()
+        self.visible_notes = tuple(
+            sorted(
+                (
+                    n
+                    for n in self.session.opened.vault.notes
+                    if query in n.title.casefold()
+                ),
+                key=lambda n: n.title.casefold().replace("ё", "е"),
+            )
+        )
+        self.list.delete(0, "end")
+        for index, note in enumerate(self.visible_notes):
+            self.list.insert("end", note.title)
+            if note.id in selected:
+                self.list.selection_set(index)
 
     def render_note_actions(self) -> None:
         row = self.toolbar
@@ -312,6 +351,8 @@ class App:
             self.generation += 1
             self.set_wait_cursor(False)
             self.session = None
+            self.visible_notes = ()
+            self.filter_text.set("")
             self.discard_editor()
             self.destroy_cloud_window()
             self.status.set("Хранилище заблокировано.")
@@ -338,7 +379,7 @@ class App:
 
     def open_selected(self) -> None:
         if self.session and (selected := self.list.curselection()):
-            self.edit(self.session.opened.vault.notes[selected[0]])
+            self.edit(self.visible_notes[selected[0]])
 
     def save_note(self, editor: Editor, note: Note) -> None:
         session = self.session
@@ -369,7 +410,7 @@ class App:
         session = self.session
         if not session or not self.ready_for_replacement():
             return
-        selected = set(self.list.curselection())
+        selected = {self.visible_notes[i].id for i in self.list.curselection()}
         if (
             selected
             and dialogs.ask_yes_no(
@@ -379,9 +420,7 @@ class App:
             )
             and self.session is session
         ):
-            notes = tuple(
-                n for i, n in enumerate(session.opened.vault.notes) if i not in selected
-            )
+            notes = tuple(n for n in session.opened.vault.notes if n.id not in selected)
             self.run(lambda: save(self.store, session, notes), self.activate_saved)
 
     def ready_for_replacement(self) -> bool:
