@@ -66,14 +66,19 @@ def clipboard(editor):
 
 def font_smoke() -> None:
     root = tk.Tk()
-    family = apply(root)
-    assert family is not None, "None of the preferred font families is installed"
-    for name in TEXT_FONTS:
-        assert font.nametofont(name, root=root).cget("family") == family
-    fontsystem = root.tk.eval("tk::pkgconfig get fontsystem")
-    if fontsystem == "xft":
-        assert legacy_fonts_message(root) is None
-    root.destroy()
+    try:
+        family = apply(root)
+        assert family is not None, "None of the preferred font families is installed"
+        for name in TEXT_FONTS:
+            assert font.nametofont(name, root=root).cget("family") == family
+        fontsystem = root.tk.call("tk", "windowingsystem")
+        # Only query Xft on X11 builds that expose Tk's configuration command.
+        if fontsystem == "x11" and root.tk.call("info", "commands", "::tk::pkgconfig"):
+            fontsystem = root.tk.call("::tk::pkgconfig", "get", "fontsystem")
+        if fontsystem == "xft":
+            assert legacy_fonts_message(root) is None
+    finally:
+        root.destroy()
     print(f"Fonts: {family} ({fontsystem})")
 
 
@@ -114,9 +119,13 @@ def smoke(path: Path) -> None:
     close_app(app)
 
 
+def cancel_pending_callbacks(root: tk.Tk) -> None:
+    for callback in root.tk.call("after", "info"):
+        root.after_cancel(callback)
+
+
 def close_app(app: App) -> None:
-    for callback in app.root.tk.call("after", "info"):
-        app.root.after_cancel(callback)
+    cancel_pending_callbacks(app.root)
     app.close()
 
 
@@ -234,7 +243,7 @@ def startup_smoke(path: Path) -> None:
         )
         if dialog:
             dialog.destroy()
-        root.after_idle(root.destroy)
+        root.after_idle(root.quit)
 
     root.after(500, observe)
     with (
@@ -243,6 +252,8 @@ def startup_smoke(path: Path) -> None:
         patch.object(ui, "default_path", return_value=path / "vault.hexage"),
     ):
         ui.main()
+    cancel_pending_callbacks(root)
+    root.destroy()
     assert visible == [True], "Startup password dialog and main window must be visible"
     assert (path / "hexage.yaml").exists(), "First run must create the config file"
     print("Startup password dialog passed")
@@ -278,9 +289,16 @@ def tooltip_smoke(path: Path) -> None:
         about.event_generate("<Enter>")  # Tk can send a crossing event on grab release.
         wait_for_tooltip(root)
         assert about._tip is None
-        root.tk.call("tk::TabToWindow", about)
+        # Xvfb may leave the main window without focus after the modal closes.
+        previous = about.tk_focusPrev()
+        assert previous is not None and previous is not about
+        previous.focus_force()
+        root.update()
+        assert root.focus_get() is previous, "Tab must start on the previous widget"
+        previous.event_generate("<<NextWindow>>")  # Tk's virtual event for Tab.
         wait_for_tooltip(root)
-        assert about._tip is not None
+        assert root.focus_get() is about, "Tab must move focus to the About button"
+        assert about._tip is not None, "Keyboard traversal must show the tooltip"
     close_app(app)
     print("Tooltip hover, modal close, and keyboard traversal passed")
 
